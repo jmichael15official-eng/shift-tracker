@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Shift Tracker</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Font Awesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+</head>
+<body>
+  <div id="currentTimes"></div>
+
+  <input type="file" id="excelFile" accept=".xlsx" />
+
+  <div id="navigation"></div>
+  <div id="shiftFilter"></div>
+
+  <div id="exportButtons" style="text-align:center; margin-bottom:20px;">
+    <!-- Buttons generated dynamically -->
+  </div>
+
+  <div id="output"></div>
+
+  <!-- Escalation Notes Modal -->
+  <div id="escalationModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal()">&times;</span>
+      <h3>Escalation Notes</h3>
+      <label>Issue:</label>
+      <input type="text" id="noteIssue" placeholder="Describe the issue...">
+      <label>Root Cause:</label>
+      <input type="text" id="noteRootCause" placeholder="Root cause...">
+      <label>Remarks:</label>
+      <input type="text" id="noteRemarks" placeholder="Additional remarks...">
+      <button onclick="saveEscalationNotes()">Save</button>
+    </div>
+  </div>
+
+  <!-- Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
