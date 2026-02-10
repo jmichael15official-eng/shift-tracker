@@ -1,122 +1,119 @@
-/* =====================================================
-   ================= GLOBAL STATE ======================
-   ===================================================== */
-
+/*********************************************************
+ * GLOBAL STATE
+ *********************************************************/
 let headers = [];
-let masterRows = [];     // FULL data from Excel (never mutate)
-let viewRows = [];       // Filtered rows for UI
+let allDataRows = [];
+let filteredRows = [];
 let currentIndex = 0;
-
-let taskStatuses = {};   // key -> good | monitor | escalate
-let escalationNotes = {}; // key -> { issue, rootCause, remarks }
-
 let selectedShift = "All";
+
+let taskStatuses = {};
+let escalationNotes = {};
 let currentEscalationKey = "";
 
-/* =====================================================
-   ================= CURRENT TIMES =====================
-   ===================================================== */
-
+/*********************************************************
+ * CURRENT TIMES
+ *********************************************************/
 function updateCurrentTimes() {
   const now = new Date();
 
-  const format = tz =>
-    now.toLocaleString("en-US", {
-      timeZone: tz,
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      second: "numeric",
-      hour12: true
-    });
-
-  document.getElementById("currentTimes").innerHTML = `
-    <h2>Current Times</h2>
-    <p>Manila: ${format("Asia/Manila")}</p>
-    <p>Mountain Time: ${format("America/Denver")}</p>
-  `;
-}
-
-updateCurrentTimes();
-setInterval(updateCurrentTimes, 1000);
-
-/* =====================================================
-   ================= EXCEL HELPERS =====================
-   ===================================================== */
-
-function excelTimeToString(value) {
-  if (typeof value !== "number") return value || "";
-  const totalSeconds = Math.round(value * 86400);
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-
-  return new Date(0, 0, 0, h, m).toLocaleTimeString("en-US", {
+  const manila = now.toLocaleString("en-US", {
+    timeZone: "Asia/Manila",
     hour: "numeric",
     minute: "2-digit",
+    second: "2-digit",
     hour12: true
   });
+
+  const mountain = now.toLocaleString("en-US", {
+    timeZone: "America/Denver",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true
+  });
+
+  document.getElementById("currentTimes").innerHTML = `
+    <strong>Manila:</strong> ${manila} |
+    <strong>MT:</strong> ${mountain}
+  `;
+}
+setInterval(updateCurrentTimes, 1000);
+updateCurrentTimes();
+
+/*********************************************************
+ * EXCEL HELPERS
+ *********************************************************/
+function excelTimeToString(value) {
+  if (typeof value === "number") {
+    const seconds = Math.round(value * 86400);
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    return new Date(0, 0, 0, h, m).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true
+    });
+  }
+  return value || "";
 }
 
-/* =====================================================
-   ================= LOAD EXCEL (GITHUB) ================
-   ===================================================== */
-
-async function loadExcelFromGitHub() {
+/*********************************************************
+ * LOAD EXCEL FROM GITHUB
+ *********************************************************/
+async function loadMonitoringTemplate() {
   try {
-    const res = await fetch("data/Weekday_Monitoring Template.xlsx");
-    if (!res.ok) throw new Error("Fetch failed");
+    const response = await fetch("./data/Weekday_Monitoring Template.xlsx");
+    if (!response.ok) throw new Error("Fetch failed");
 
-    const buffer = await res.arrayBuffer();
+    const buffer = await response.arrayBuffer();
     const workbook = XLSX.read(buffer, { type: "array" });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
     headers = rows[0];
-    masterRows = rows.slice(1).map((row, i) => ({
-      __rowId: i,
+    allDataRows = rows.slice(1).map((row, idx) => ({
+      __rowId: idx,
       data: row
     }));
 
-    selectedShift = "All";
-    viewRows = [...masterRows];
+    filteredRows = allDataRows;
     currentIndex = 0;
+    selectedShift = "All";
 
-    buildShiftFilter();
     buildNavigation();
+    buildShiftFilter();
     buildExportButtons();
     renderCurrent();
 
   } catch (err) {
     console.error(err);
-    alert("Failed to load monitoring template");
+    document.getElementById("output").innerHTML =
+      "<b style='color:red'>Failed to load monitoring template</b>";
   }
 }
 
-loadExcelFromGitHub();
+loadMonitoringTemplate();
 
-/* =====================================================
-   ================= NAVIGATION ========================
-   ===================================================== */
-
+/*********************************************************
+ * NAVIGATION
+ *********************************************************/
 function buildNavigation() {
   document.getElementById("navigation").innerHTML = `
-    <button id="prevBtn" onclick="prevCard()">Previous</button>
+    <button onclick="prevCard()">Previous</button>
     <span id="cardCounter"></span>
-    <button id="nextBtn" onclick="nextCard()">Next</button>
+    <button onclick="nextCard()">Next</button>
   `;
   updateCounter();
 }
 
 function updateCounter() {
-  const total = viewRows.length;
-  document.getElementById("cardCounter").innerText =
-    total ? `Shift ${currentIndex + 1} of ${total}` : "No shifts";
-
-  document.getElementById("prevBtn").disabled = currentIndex === 0;
-  document.getElementById("nextBtn").disabled =
-    currentIndex >= total - 1;
+  const counter = document.getElementById("cardCounter");
+  if (!filteredRows.length) {
+    counter.innerText = "No data";
+    return;
+  }
+  counter.innerText = `Shift ${currentIndex + 1} of ${filteredRows.length}`;
 }
 
 function prevCard() {
@@ -127,53 +124,46 @@ function prevCard() {
 }
 
 function nextCard() {
-  if (currentIndex < viewRows.length - 1) {
+  if (currentIndex < filteredRows.length - 1) {
     currentIndex++;
     renderCurrent();
   }
 }
 
-/* =====================================================
-   ================= CARD RENDER =======================
-   ===================================================== */
-
+/*********************************************************
+ * RENDER CARD
+ *********************************************************/
 function renderCurrent() {
-  if (!viewRows.length) {
-    document.getElementById("output").innerHTML = "No data";
-    updateCounter();
-    return;
-  }
+  const rowObj = filteredRows[currentIndex];
+  if (!rowObj) return;
 
-  const rowObj = viewRows[currentIndex];
   const row = rowObj.data;
   const rowId = rowObj.__rowId;
-
-  const shift = row[0];
-  const manila = excelTimeToString(row[1]);
-  const mt = excelTimeToString(row[2]);
 
   let html = `
     <div class="shift-card">
       <div class="shift-header">
-        ${shift} — ${manila} Manila | ${mt} MT
+        ${row[0]} — ${excelTimeToString(row[1])} | ${excelTimeToString(row[2])}
       </div>
   `;
 
-  for (let c = 3; c < headers.length; c++) {
-    if (!row[c]) continue;
+  for (let i = 3; i < headers.length; i++) {
+    if (!row[i]) continue;
 
-    const app = headers[c];
-    const key = `${shift}-${app}-${rowId}`;
+    const key = `${row[0]}-${headers[i]}-${rowId}`;
     const status = taskStatuses[key] || "";
 
     html += `
       <div class="task ${status === "escalate" ? "escalated" : ""}">
-        <strong>${app}</strong>
-        <span>${row[c]}</span>
+        <strong>${headers[i]}</strong>
+        <span>${row[i]}</span>
         <div class="task-buttons">
-          ${statusButton("good", key, status)}
-          ${statusButton("monitor", key, status)}
-          ${statusButton("escalate", key, status)}
+          <button class="${status === "good" ? "active-good" : ""}"
+            onclick="setStatus('${key}','good')">Good</button>
+          <button class="${status === "monitor" ? "active-monitor" : ""}"
+            onclick="setStatus('${key}','monitor')">Monitor</button>
+          <button class="${status === "escalate" ? "active-escalate" : ""}"
+            onclick="setStatus('${key}','escalate',true)">Escalate</button>
         </div>
       </div>
     `;
@@ -183,50 +173,21 @@ function renderCurrent() {
   updateCounter();
 }
 
-function statusButton(type, key, current) {
-  const icons = {
-    good: "check",
-    monitor: "eye",
-    escalate: "exclamation-triangle"
-  };
-
-  return `
-    <button class="${current === type ? `active-${type}` : ""}"
-      onclick="setStatus('${type}','${key}')">
-      <i class="fas fa-${icons[type]}"></i>${type}
-    </button>
-  `;
-}
-
-/* =====================================================
-   ================= STATUS HANDLING ===================
-   ===================================================== */
-
-function setStatus(status, key) {
+/*********************************************************
+ * STATUS + MODAL
+ *********************************************************/
+function setStatus(key, status, openModal = false) {
   taskStatuses[key] = status;
 
-  if (status === "escalate" && !escalationNotes[key]) {
+  if (status === "escalate" && openModal && !escalationNotes[key]) {
     currentEscalationKey = key;
-    openModal(key);
+    document.getElementById("escalationModal").style.display = "block";
   }
-
   renderCurrent();
 }
 
-/* =====================================================
-   ================= ESCALATION MODAL ==================
-   ===================================================== */
-
-function openModal(key) {
-  const notes = escalationNotes[key] || {};
-  noteIssue.value = notes.issue || "";
-  noteRootCause.value = notes.rootCause || "";
-  noteRemarks.value = notes.remarks || "";
-  escalationModal.style.display = "block";
-}
-
 function closeModal() {
-  escalationModal.style.display = "none";
+  document.getElementById("escalationModal").style.display = "none";
 }
 
 function saveEscalationNotes() {
@@ -238,57 +199,54 @@ function saveEscalationNotes() {
   closeModal();
 }
 
-/* =====================================================
-   ================= SHIFT FILTER ======================
-   ===================================================== */
-
+/*********************************************************
+ * SHIFT FILTER
+ *********************************************************/
 function buildShiftFilter() {
-  const shifts = [...new Set(masterRows.map(r => r.data[0]))];
-
-  let html = `<button onclick="filterByShift('All')" class="${selectedShift === "All" ? "active-filter" : ""}">All</button>`;
-
+  const shifts = [...new Set(allDataRows.map(r => r.data[0]))];
+  let html = `<button onclick="filterByShift('All')">All</button>`;
   shifts.forEach(s => {
-    html += `<button onclick="filterByShift('${s}')" class="${selectedShift === s ? "active-filter" : ""}">${s}</button>`;
+    html += `<button onclick="filterByShift('${s}')">${s}</button>`;
   });
-
   document.getElementById("shiftFilter").innerHTML = html;
 }
 
 function filterByShift(shift) {
   selectedShift = shift;
-  viewRows =
+  filteredRows =
     shift === "All"
-      ? [...masterRows]
-      : masterRows.filter(r => r.data[0] === shift);
-
+      ? allDataRows
+      : allDataRows.filter(r => r.data[0] === shift);
   currentIndex = 0;
-  buildShiftFilter();
   renderCurrent();
 }
 
-/* =====================================================
-   ================= EXPORT HELPERS ====================
-   ===================================================== */
-
-function getMountainDate() {
-  const now = new Date();
-  return now.toLocaleDateString("en-US", {
-    timeZone: "America/Denver",
-    month: "long",
-    day: "numeric",
-    year: "numeric"
-  }).replace(/ /g, "_");
+/*********************************************************
+ * EXPORT + RESET
+ *********************************************************/
+function buildExportButtons() {
+  document.getElementById("exportButtons").innerHTML = `
+    <button onclick="exportShiftData(selectedShift)">Export Shift</button>
+    <button onclick="exportEscalatedTasks(selectedShift)">Export Escalations</button>
+    <button onclick="resetAllStatuses()">Reset Status</button>
+  `;
 }
 
-/* =====================================================
-   ================= EXPORT SHIFT ======================
-   ===================================================== */
+function resetAllStatuses() {
+  if (!confirm("Reset all task statuses?")) return;
+  taskStatuses = {};
+  escalationNotes = {};
+  renderCurrent();
+}
 
-async function exportShiftData(shift) {
+/*********************************************************
+ * EXPORT FUNCTIONS
+ *********************************************************/
+async function exportShiftData(shiftName) {
   const rows =
-    shift === "All"
-      ? masterRows
-      : masterRows.filter(r => r.data[0] === shift);
+    shiftName === "All"
+      ? allDataRows
+      : allDataRows.filter(r => r.data[0] === shiftName);
 
   if (!rows.length) return alert("No data to export");
 
@@ -304,71 +262,46 @@ async function exportShiftData(shift) {
     ws.addRow(row);
   });
 
-  const buffer = await wb.xlsx.writeBuffer();
-  download(buffer, `${getMountainDate()}_${shift}_Shifts.xlsx`);
+  const buf = await wb.xlsx.writeBuffer();
+  download(buf, "Shift_Report.xlsx");
 }
 
-/* =====================================================
-   ================= EXPORT ESCALATIONS =================
-   ===================================================== */
+async function exportEscalatedTasks(shiftName) {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Escalations");
 
-async function exportEscalatedTasks(shift) {
-  const escalated = [];
+  ws.addRow(["Shift", "App", "Task", "Issue", "Root Cause", "Remarks"]);
 
-  masterRows.forEach(r => {
-    const row = r.data;
-    if (shift !== "All" && row[0] !== shift) return;
+  allDataRows.forEach(r => {
+    const shift = r.data[0];
+    if (shiftName !== "All" && shift !== shiftName) return;
 
-    for (let c = 3; c < headers.length; c++) {
-      const key = `${row[0]}-${headers[c]}-${r.__rowId}`;
+    headers.slice(3).forEach((app, idx) => {
+      const key = `${shift}-${app}-${r.__rowId}`;
       if (taskStatuses[key] === "escalate") {
         const notes = escalationNotes[key] || {};
-        escalated.push([
-          row[0],
-          headers[c],
-          row[c],
-          excelTimeToString(row[1]),
-          excelTimeToString(row[2]),
+        ws.addRow([
+          shift,
+          app,
+          r.data[idx + 3],
           notes.issue || "",
           notes.rootCause || "",
           notes.remarks || ""
         ]);
       }
-    }
+    });
   });
 
-  if (!escalated.length) return alert("No escalations found");
-
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("Escalations");
-
-  ws.addRow([
-    "Shift",
-    "App",
-    "Task",
-    "Manila Time",
-    "MT Time",
-    "Issue",
-    "Root Cause",
-    "Remarks"
-  ]);
-
-  escalated.forEach(r => ws.addRow(r));
-
-  const buffer = await wb.xlsx.writeBuffer();
-  download(buffer, `${getMountainDate()}_${shift}_Escalations.xlsx`);
+  const buf = await wb.xlsx.writeBuffer();
+  download(buf, "Escalation_Report.xlsx");
 }
-
-/* =====================================================
-   ================= DOWNLOAD ==========================
-   ===================================================== */
 
 function download(buffer, name) {
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = name;
+  link.click();
 }
