@@ -47,12 +47,16 @@ updateCurrentTimes();
 setInterval(updateCurrentTimes, 1000);
 
 /* =====================================================
-   ================= FILE LOAD (GITHUB) =================
+   ================= EXCEL LOAD (GITHUB) ===============
    ===================================================== */
 
 async function loadExcelTemplateFromGitHub() {
   try {
-    const response = await fetch("data/Weekday_Monitoring_Template.xlsx");
+    const basePath = window.location.pathname.replace(/\/[^/]*$/, "");
+    const response = await fetch(
+      `${basePath}/data/Weekday_Monitoring_Template.xlsx`
+    );
+
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const buffer = await response.arrayBuffer();
@@ -64,6 +68,31 @@ async function loadExcelTemplateFromGitHub() {
     alert("Failed to load excel template from GitHub.");
   }
 }
+
+window.addEventListener("DOMContentLoaded", loadExcelTemplateFromGitHub);
+
+/* =====================================================
+   ================= FILE UPLOAD (OPTIONAL) ============
+   ===================================================== */
+
+document.getElementById("excelFile")?.addEventListener("change", handleFile);
+
+function handleFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const data = new Uint8Array(e.target.result);
+    const workbook = XLSX.read(data, { type: "array" });
+    parseWorkbook(workbook);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* =====================================================
+   ================= WORKBOOK PARSE ===================
+   ===================================================== */
 
 function parseWorkbook(workbook) {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -84,27 +113,6 @@ function parseWorkbook(workbook) {
   buildShiftFilter();
   buildExportButtons();
 }
-
-/* =====================================================
-   =============== OPTIONAL FILE UPLOAD =================
-   ===================================================== */
-
-document.getElementById("excelFile")?.addEventListener("change", handleFile);
-
-function handleFile(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = e => {
-    const data = new Uint8Array(e.target.result);
-    const workbook = XLSX.read(data, { type: "array" });
-    parseWorkbook(workbook);
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-window.addEventListener("DOMContentLoaded", loadExcelTemplateFromGitHub);
 
 /* =====================================================
    ================= TIME FORMAT =======================
