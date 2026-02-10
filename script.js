@@ -42,6 +42,21 @@ setInterval(updateCurrentTimes, 1000);
 updateCurrentTimes();
 
 /*********************************************************
+ * DATE (MOUNTAIN TIME)
+ *********************************************************/
+function getMountainDateString() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Denver",
+    year: "numeric",
+    month: "long",
+    day: "2-digit"
+  }).formatToParts(new Date());
+
+  const get = t => parts.find(p => p.type === t)?.value;
+  return `${get("month")}_${get("day")}_${get("year")}`;
+}
+
+/*********************************************************
  * EXCEL HELPERS
  *********************************************************/
 function excelTimeToString(value) {
@@ -59,21 +74,21 @@ function excelTimeToString(value) {
 }
 
 /*********************************************************
- * LOAD EXCEL FROM GITHUB
+ * LOAD EXCEL (GITHUB)
  *********************************************************/
 async function loadMonitoringTemplate() {
   try {
-    const response = await fetch("./data/Weekday_Monitoring Template.xlsx");
-    if (!response.ok) throw new Error("Fetch failed");
+    const res = await fetch("./data/Weekday_Monitoring Template.xlsx");
+    if (!res.ok) throw new Error("Fetch failed");
 
-    const buffer = await response.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array" });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const buffer = await res.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: "array" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
     headers = rows[0];
-    allDataRows = rows.slice(1).map((row, idx) => ({
-      __rowId: idx,
+    allDataRows = rows.slice(1).map((row, i) => ({
+      __rowId: i,
       data: row
     }));
 
@@ -86,13 +101,12 @@ async function loadMonitoringTemplate() {
     buildExportButtons();
     renderCurrent();
 
-  } catch (err) {
-    console.error(err);
+  } catch (e) {
+    console.error(e);
     document.getElementById("output").innerHTML =
       "<b style='color:red'>Failed to load monitoring template</b>";
   }
 }
-
 loadMonitoringTemplate();
 
 /*********************************************************
@@ -108,12 +122,12 @@ function buildNavigation() {
 }
 
 function updateCounter() {
-  const counter = document.getElementById("cardCounter");
+  const el = document.getElementById("cardCounter");
   if (!filteredRows.length) {
-    counter.innerText = "No data";
+    el.innerText = "No data";
     return;
   }
-  counter.innerText = `Shift ${currentIndex + 1} of ${filteredRows.length}`;
+  el.innerText = `Shift ${currentIndex + 1} of ${filteredRows.length}`;
 }
 
 function prevCard() {
@@ -131,7 +145,7 @@ function nextCard() {
 }
 
 /*********************************************************
- * RENDER CARD
+ * RENDER
  *********************************************************/
 function renderCurrent() {
   const rowObj = filteredRows[currentIndex];
@@ -174,11 +188,10 @@ function renderCurrent() {
 }
 
 /*********************************************************
- * STATUS + MODAL
+ * STATUS
  *********************************************************/
 function setStatus(key, status, openModal = false) {
   taskStatuses[key] = status;
-
   if (status === "escalate" && openModal && !escalationNotes[key]) {
     currentEscalationKey = key;
     document.getElementById("escalationModal").style.display = "block";
@@ -200,14 +213,25 @@ function saveEscalationNotes() {
 }
 
 /*********************************************************
- * SHIFT FILTER
+ * SHIFT FILTER (HIGHLIGHT FIXED)
  *********************************************************/
 function buildShiftFilter() {
   const shifts = [...new Set(allDataRows.map(r => r.data[0]))];
-  let html = `<button onclick="filterByShift('All')">All</button>`;
+
+  let html = `
+    <button
+      class="${selectedShift === "All" ? "active-filter" : ""}"
+      onclick="filterByShift('All')">All</button>
+  `;
+
   shifts.forEach(s => {
-    html += `<button onclick="filterByShift('${s}')">${s}</button>`;
+    html += `
+      <button
+        class="${selectedShift === s ? "active-filter" : ""}"
+        onclick="filterByShift('${s}')">${s}</button>
+    `;
   });
+
   document.getElementById("shiftFilter").innerHTML = html;
 }
 
@@ -218,6 +242,7 @@ function filterByShift(shift) {
       ? allDataRows
       : allDataRows.filter(r => r.data[0] === shift);
   currentIndex = 0;
+  buildShiftFilter();
   renderCurrent();
 }
 
@@ -226,8 +251,8 @@ function filterByShift(shift) {
  *********************************************************/
 function buildExportButtons() {
   document.getElementById("exportButtons").innerHTML = `
-    <button onclick="exportShiftData(selectedShift)">Export Shift</button>
-    <button onclick="exportEscalatedTasks(selectedShift)">Export Escalations</button>
+    <button onclick="exportShiftData()">Export Shift</button>
+    <button onclick="exportEscalatedTasks()">Export Escalations</button>
     <button onclick="resetAllStatuses()">Reset Status</button>
   `;
 }
@@ -240,13 +265,13 @@ function resetAllStatuses() {
 }
 
 /*********************************************************
- * EXPORT FUNCTIONS
+ * EXPORTS (FILENAME FIXED)
  *********************************************************/
-async function exportShiftData(shiftName) {
+async function exportShiftData() {
   const rows =
-    shiftName === "All"
+    selectedShift === "All"
       ? allDataRows
-      : allDataRows.filter(r => r.data[0] === shiftName);
+      : allDataRows.filter(r => r.data[0] === selectedShift);
 
   if (!rows.length) return alert("No data to export");
 
@@ -262,11 +287,16 @@ async function exportShiftData(shiftName) {
     ws.addRow(row);
   });
 
-  const buf = await wb.xlsx.writeBuffer();
-  download(buf, "Shift_Report.xlsx");
+  const date = getMountainDateString();
+  const name =
+    selectedShift === "All"
+      ? `${date}_All_Shifts.xlsx`
+      : `${date}_${selectedShift}.xlsx`;
+
+  download(await wb.xlsx.writeBuffer(), name);
 }
 
-async function exportEscalatedTasks(shiftName) {
+async function exportEscalatedTasks() {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Escalations");
 
@@ -274,34 +304,39 @@ async function exportEscalatedTasks(shiftName) {
 
   allDataRows.forEach(r => {
     const shift = r.data[0];
-    if (shiftName !== "All" && shift !== shiftName) return;
+    if (selectedShift !== "All" && shift !== selectedShift) return;
 
     headers.slice(3).forEach((app, idx) => {
       const key = `${shift}-${app}-${r.__rowId}`;
       if (taskStatuses[key] === "escalate") {
-        const notes = escalationNotes[key] || {};
+        const n = escalationNotes[key] || {};
         ws.addRow([
           shift,
           app,
           r.data[idx + 3],
-          notes.issue || "",
-          notes.rootCause || "",
-          notes.remarks || ""
+          n.issue || "",
+          n.rootCause || "",
+          n.remarks || ""
         ]);
       }
     });
   });
 
-  const buf = await wb.xlsx.writeBuffer();
-  download(buf, "Escalation_Report.xlsx");
+  const date = getMountainDateString();
+  const name =
+    selectedShift === "All"
+      ? `${date}_All_Escalated_Report.xlsx`
+      : `${date}_${selectedShift}_Escalated_Report.xlsx`;
+
+  download(await wb.xlsx.writeBuffer(), name);
 }
 
-function download(buffer, name) {
+function download(buffer, filename) {
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = name;
-  link.click();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
 }
