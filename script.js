@@ -47,75 +47,7 @@ updateCurrentTimes();
 setInterval(updateCurrentTimes, 1000);
 
 /* =====================================================
-   ================= EXCEL LOAD (GITHUB) ===============
-   ===================================================== */
-
-async function loadExcelTemplateFromGitHub() {
-  try {
-    const basePath = window.location.pathname.replace(/\/[^/]*$/, "");
-    const response = await fetch(
-      `${basePath}/data/Weekday_Monitoring_Template.xlsx`
-    );
-
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-    const buffer = await response.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array" });
-
-    parseWorkbook(workbook);
-  } catch (err) {
-    console.error("Failed to load excel template:", err);
-    alert("Failed to load excel template from GitHub.");
-  }
-}
-
-window.addEventListener("DOMContentLoaded", loadExcelTemplateFromGitHub);
-
-/* =====================================================
-   ================= FILE UPLOAD (OPTIONAL) ============
-   ===================================================== */
-
-document.getElementById("excelFile")?.addEventListener("change", handleFile);
-
-function handleFile(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = e => {
-    const data = new Uint8Array(e.target.result);
-    const workbook = XLSX.read(data, { type: "array" });
-    parseWorkbook(workbook);
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-/* =====================================================
-   ================= WORKBOOK PARSE ===================
-   ===================================================== */
-
-function parseWorkbook(workbook) {
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-
-  headers = rows[0];
-  allDataRows = rows.slice(1).map((row, i) => ({
-    __rowId: i,
-    data: row
-  }));
-
-  filteredRows = allDataRows;
-  currentIndex = 0;
-  selectedShift = "All";
-
-  renderSingleCard(filteredRows, currentIndex);
-  buildNavigation();
-  buildShiftFilter();
-  buildExportButtons();
-}
-
-/* =====================================================
-   ================= TIME FORMAT =======================
+   ============ EXCEL TIME CONVERSION ==================
    ===================================================== */
 
 function excelTimeToString(value) {
@@ -132,6 +64,47 @@ function excelTimeToString(value) {
   }
   return value || "";
 }
+
+/* =====================================================
+   ============ LOAD TEMPLATE FROM GITHUB ===============
+   ===================================================== */
+
+async function loadMonitoringTemplate() {
+  try {
+    const response = await fetch("data/Weekday_Monitoring Template.xlsx");
+    if (!response.ok) throw new Error("Fetch failed");
+
+    const buffer = await response.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+    if (!rows.length || rows[0][0] !== "Shift") {
+      alert("Invalid monitoring template");
+      return;
+    }
+
+    headers = rows[0];
+    allDataRows = rows.slice(1).map((row, i) => ({
+      __rowId: i,
+      data: row
+    }));
+
+    filteredRows = allDataRows;
+    currentIndex = 0;
+    selectedShift = "All";
+
+    renderSingleCard(filteredRows, currentIndex);
+    buildNavigation();
+    buildShiftFilter();
+    buildExportButtons();
+  } catch (err) {
+    console.error(err);
+    alert("Failed to load monitoring template");
+  }
+}
+
+window.addEventListener("load", loadMonitoringTemplate);
 
 /* =====================================================
    ================= NAVIGATION ========================
@@ -335,7 +308,7 @@ function buildExportButtons() {
 }
 
 /* =====================================================
-   ============ MOUNTAIN TIME DATE =====================
+   ============ MOUNTAIN TIME DATE (SAFE) ===============
    ===================================================== */
 
 function getMountainTimeDateString() {
@@ -395,32 +368,6 @@ async function exportShiftData(shiftName) {
     worksheet.addRow(row);
   });
 
-  rows.forEach((rowObj, rIndex) => {
-    const shift = rowObj.data[0];
-    for (let c = 3; c < headers.length; c++) {
-      const app = headers[c];
-      const key = `${shift}-${app}-${rowObj.__rowId}`;
-      const status = taskStatuses[key];
-
-      if (!status) continue;
-
-      const cell = worksheet.getRow(rIndex + 2).getCell(c + 1);
-      if (status === "good")
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF00FF00" } };
-      if (status === "monitor")
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
-      if (status === "escalate") {
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF0000" } };
-        cell.font = { bold: true };
-      }
-    }
-  });
-
-  const fileName =
-    shiftName === "All"
-      ? `All_Shifts_${getMountainTimeDateString()}.xlsx`
-      : `${getMountainTimeDateString()}_${shiftName}.xlsx`;
-
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -428,7 +375,7 @@ async function exportShiftData(shiftName) {
 
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = fileName;
+  link.download = `${getMountainTimeDateString()}_${shiftName}.xlsx`;
   link.click();
 }
 
@@ -485,18 +432,6 @@ async function exportEscalatedTasks(shiftName) {
 
   escalated.forEach(row => worksheet.addRow(row));
 
-  escalated.forEach((_, i) => {
-    worksheet.getRow(i + 2).eachCell(cell => {
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF0000" } };
-      cell.font = { bold: true };
-    });
-  });
-
-  const fileName =
-    shiftName === "All"
-      ? `${getMountainTimeDateString()}_All_Escalated_Report.xlsx`
-      : `${getMountainTimeDateString()}_${shiftName}_Escalated_Report.xlsx`;
-
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -504,6 +439,6 @@ async function exportEscalatedTasks(shiftName) {
 
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = fileName;
+  link.download = `${getMountainTimeDateString()}_Escalated_Report.xlsx`;
   link.click();
 }
