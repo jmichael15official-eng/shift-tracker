@@ -1,53 +1,52 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Shift Tracker</title>
 
-  <link rel="stylesheet" href="style.css" />
-  <link
-    rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
-  />
+  <link rel="stylesheet" href="style.css">
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
+  <!-- Font Awesome -->
+  <link rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
 </head>
 <body>
 
-  <h1>Shift Tracker</h1>
-
   <div id="currentTimes"></div>
 
-  <div class="top-actions">
-    <button onclick="loadTemplate()">Load Template</button>
-    <button class="danger" onclick="resetCurrentShift()">Reset Current Shift</button>
-  </div>
+  <!-- Optional manual upload -->
+  <input type="file" id="excelFile" accept=".xlsx" />
 
-  <div id="shiftFilter"></div>
   <div id="navigation"></div>
-  <div id="output"></div>
+  <div id="shiftFilter"></div>
+
   <div id="exportButtons"></div>
+
+  <div id="output"></div>
 
   <!-- Escalation Modal -->
   <div id="escalationModal" class="modal">
     <div class="modal-content">
-      <h3>Escalation Details</h3>
-      <label>Issue</label>
-      <textarea id="noteIssue"></textarea>
+      <span class="close" onclick="closeModal()">&times;</span>
+      <h3>Escalation Notes</h3>
 
-      <label>Root Cause</label>
-      <textarea id="noteRootCause"></textarea>
+      <label>Issue:</label>
+      <input id="noteIssue" type="text">
 
-      <label>Remarks</label>
-      <textarea id="noteRemarks"></textarea>
+      <label>Root Cause:</label>
+      <input id="noteRootCause" type="text">
 
-      <div class="modal-actions">
-        <button onclick="saveEscalationNotes()">Save</button>
-        <button onclick="closeModal()">Cancel</button>
-      </div>
+      <label>Remarks:</label>
+      <input id="noteRemarks" type="text">
+
+      <button onclick="saveEscalationNotes()">Save</button>
     </div>
   </div>
+
+  <!-- Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
 
   <script src="script.js"></script>
 </body>
