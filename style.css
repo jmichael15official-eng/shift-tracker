@@ -1,68 +1,162 @@
+/* ---------- Global ---------- */
 body {
-  font-family: Arial, sans-serif;
+  margin: 0;
   padding: 20px;
-  background: #f4f6f8;
+  background: #eef2f7;
+  font-family: 'Segoe UI', sans-serif;
 }
 
-h1 {
-  margin-bottom: 10px;
-}
-
-.shift-card {
-  background: white;
+/* ---------- Current Times ---------- */
+#currentTimes {
+  background: linear-gradient(135deg, #4facfe, #00f2fe);
   padding: 15px;
+  margin-bottom: 20px;
+  border-radius: 10px;
+  color: #fff;
+  text-align: center;
+  font-size: 1.1em;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+/* ---------- Navigation Buttons ---------- */
+#navigation {
+  text-align: center;
+  margin-bottom: 15px;
+}
+
+#navigation button {
+  margin: 5px;
+  padding: 8px 15px;
+  border: none;
   border-radius: 6px;
-  margin-top: 10px;
-}
-
-.shift-header {
-  font-weight: bold;
-  margin-bottom: 10px;
-}
-
-.task {
-  padding: 8px;
-  border-bottom: 1px solid #ddd;
-}
-
-.task-buttons button {
-  margin-right: 5px;
-}
-
-.active-good { background: #4caf50; color: white; }
-.active-monitor { background: #ffeb3b; }
-.active-escalate { background: #f44336; color: white; }
-
-.escalated {
-  border-left: 5px solid red;
-}
-
-button {
-  padding: 6px 10px;
+  background: #3498db;
+  color: #fff;
   cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s ease, transform 0.2s ease;
 }
 
-.danger {
-  background: #f44336;
-  color: white;
+#navigation button:disabled {
+  background: #95a5a6;
+  cursor: not-allowed;
+}
+
+#navigation button:hover:not(:disabled) {
+  background: #2980b9;
+  transform: translateY(-2px);
+}
+
+/* ---------- Shift Filter Buttons ---------- */
+#shiftFilter {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+#shiftFilter button {
+  margin: 5px;
+  padding: 8px 15px;
+  border: none;
+  border-radius: 20px;
+  background: #3498db;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
 }
 
 #shiftFilter button.active-filter {
-  background: #2196f3;
-  color: white;
+  background: #2ecc71;
 }
 
-.modal {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.5);
+#shiftFilter button:hover:not(.active-filter) {
+  background: #2980b9;
+  transform: translateY(-2px);
 }
 
-.modal-content {
-  background: white;
-  width: 400px;
-  padding: 15px;
-  margin: 100px auto;
+/* ---------- Export Buttons ---------- */
+#exportButtons {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+#exportButtons button {
+  margin: 5px;
+  padding: 10px 18px;
+  border: none;
   border-radius: 6px;
+  background: #1abc9c;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+#exportButtons button:hover {
+  background: #16a085;
+  transform: translateY(-2px);
+}
+
+/* ---------- Shift Card ---------- */
+.shift-card {
+  border-radius: 12px;
+  padding: 20px;
+  margin: 20px auto;
+  max-width: 700px;
+  background: #ffffff;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+
+/* ---------- Shift Header ---------- */
+.shift-header {
+  font-size: 1.2em;
+  font-weight: bold;
+  margin-bottom: 15px;
+  color: #2c3e50;
+  border-bottom: 2px solid #eee;
+  padding-bottom: 8px;
+  text-align: center;
+}
+
+/* ---------- Task Block ---------- */
+.task {
+  margin: 12px 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f7f9fc;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.task.escalated {
+  border-left: 6px solid #e74c3c;
+  background: #fff5f5;
+}
+
+/* ---------- Buttons ---------- */
+.task-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.task-buttons button.active-good { background:#2ecc71;color:#fff; }
+.task-buttons button.active-monitor { background:#f1c40f;color:#fff; }
+.task-buttons button.active-escalate { background:#e74c3c;color:#fff; }
+
+/* ---------- Modal ---------- */
+.modal {
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.55);
+}
+.modal-content {
+  background:#fff;
+  margin:10vh auto;
+  padding:20px;
+  width:420px;
+  border-radius:12px;
+}
+.close {
+  float:right;
+  cursor:pointer;
 }
