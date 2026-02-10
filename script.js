@@ -213,21 +213,19 @@ function saveEscalationNotes() {
 }
 
 /*********************************************************
- * SHIFT FILTER (HIGHLIGHT FIXED)
+ * SHIFT FILTER
  *********************************************************/
 function buildShiftFilter() {
   const shifts = [...new Set(allDataRows.map(r => r.data[0]))];
 
   let html = `
-    <button
-      class="${selectedShift === "All" ? "active-filter" : ""}"
+    <button class="${selectedShift === "All" ? "active-filter" : ""}"
       onclick="filterByShift('All')">All</button>
   `;
 
   shifts.forEach(s => {
     html += `
-      <button
-        class="${selectedShift === s ? "active-filter" : ""}"
+      <button class="${selectedShift === s ? "active-filter" : ""}"
         onclick="filterByShift('${s}')">${s}</button>
     `;
   });
@@ -265,7 +263,7 @@ function resetAllStatuses() {
 }
 
 /*********************************************************
- * EXPORTS (FILENAME FIXED)
+ * EXPORT SHIFT (COLOR FIXED)
  *********************************************************/
 async function exportShiftData() {
   const rows =
@@ -287,20 +285,47 @@ async function exportShiftData() {
     ws.addRow(row);
   });
 
-  const date = getMountainDateString();
+  // 🔴🟡🟢 APPLY STATUS COLORS
+  rows.forEach((r, rowIndex) => {
+    const shift = r.data[0];
+    headers.slice(3).forEach((app, colOffset) => {
+      const key = `${shift}-${app}-${r.__rowId}`;
+      const status = taskStatuses[key];
+      if (!status) return;
+
+      const cell = ws.getRow(rowIndex + 2).getCell(colOffset + 4);
+
+      if (status === "good") {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF00FF00" } };
+      }
+      if (status === "monitor") {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
+      }
+      if (status === "escalate") {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF0000" } };
+        cell.font = { bold: true };
+      }
+    });
+  });
+
   const name =
     selectedShift === "All"
-      ? `${date}_All_Shifts.xlsx`
-      : `${date}_${selectedShift}.xlsx`;
+      ? `${getMountainDateString()}_All_Shifts.xlsx`
+      : `${getMountainDateString()}_${selectedShift}.xlsx`;
 
   download(await wb.xlsx.writeBuffer(), name);
 }
 
+/*********************************************************
+ * EXPORT ESCALATIONS (COLOR FIXED)
+ *********************************************************/
 async function exportEscalatedTasks() {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Escalations");
 
   ws.addRow(["Shift", "App", "Task", "Issue", "Root Cause", "Remarks"]);
+
+  let rowNum = 2;
 
   allDataRows.forEach(r => {
     const shift = r.data[0];
@@ -318,19 +343,28 @@ async function exportEscalatedTasks() {
           n.rootCause || "",
           n.remarks || ""
         ]);
+
+        ws.getRow(rowNum).eachCell(cell => {
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF0000" } };
+          cell.font = { bold: true };
+        });
+
+        rowNum++;
       }
     });
   });
 
-  const date = getMountainDateString();
   const name =
     selectedShift === "All"
-      ? `${date}_All_Escalated_Report.xlsx`
-      : `${date}_${selectedShift}_Escalated_Report.xlsx`;
+      ? `${getMountainDateString()}_All_Escalated_Report.xlsx`
+      : `${getMountainDateString()}_${selectedShift}_Escalated_Report.xlsx`;
 
   download(await wb.xlsx.writeBuffer(), name);
 }
 
+/*********************************************************
+ * DOWNLOAD
+ *********************************************************/
 function download(buffer, filename) {
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
