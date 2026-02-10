@@ -3,22 +3,29 @@
 <head>
   <meta charset="UTF-8">
   <title>Shift Tracker</title>
+
   <link rel="stylesheet" href="style.css">
-  <!-- Font Awesome for icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
+  <!-- Font Awesome -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
+  >
 </head>
 <body>
+
   <div id="currentTimes"></div>
 
-  <input type="file" id="excelFile" accept=".xlsx" />
-
+  <!-- Navigation -->
   <div id="navigation"></div>
+
+  <!-- Shift Filter -->
   <div id="shiftFilter"></div>
 
-  <div id="exportButtons" style="text-align:center; margin-bottom:20px;">
-    <!-- Buttons generated dynamically -->
-  </div>
+  <!-- Export Buttons -->
+  <div id="exportButtons" style="text-align:center; margin-bottom:20px;"></div>
 
+  <!-- Main Output -->
   <div id="output"></div>
 
   <!-- Escalation Notes Modal -->
@@ -26,12 +33,16 @@
     <div class="modal-content">
       <span class="close" onclick="closeModal()">&times;</span>
       <h3>Escalation Notes</h3>
-      <label>Issue:</label>
-      <input type="text" id="noteIssue" placeholder="Describe the issue...">
-      <label>Root Cause:</label>
-      <input type="text" id="noteRootCause" placeholder="Root cause...">
-      <label>Remarks:</label>
-      <input type="text" id="noteRemarks" placeholder="Additional remarks...">
+
+      <label>Issue</label>
+      <input id="noteIssue" placeholder="Describe the issue">
+
+      <label>Root Cause</label>
+      <input id="noteRootCause" placeholder="Root cause">
+
+      <label>Remarks</label>
+      <input id="noteRemarks" placeholder="Additional remarks">
+
       <button onclick="saveEscalationNotes()">Save</button>
     </div>
   </div>
@@ -39,6 +50,8 @@
   <!-- Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
+
+  <!-- App -->
   <script src="script.js"></script>
 </body>
 </html>
