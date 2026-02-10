@@ -1,173 +1,179 @@
-let allDataRows = [];
-let headers = [];
-let filteredRows = [];
-let currentIndex = 0;
-let selectedShift = "All";
-let taskStatuses = {};
-let escalationNotes = {};
-let currentEscalationKey = "";
+/* ============================
+   GLOBAL STATE
+============================ */
+const tasks = [
+  { name: "Database Check", status: null },
+  { name: "API Health", status: null },
+  { name: "Batch Jobs", status: null },
+  { name: "Disk Usage", status: null }
+];
 
-/* ================= TIMES ================= */
+let selectedTaskIndex = null;
 
-function updateCurrentTimes() {
+/* ============================
+   TIME DISPLAY
+============================ */
+function updateTime() {
   const now = new Date();
-  currentTimes.innerHTML = `
-    <p>Manila: ${now.toLocaleString("en-US",{timeZone:"Asia/Manila"})}</p>
-    <p>Mountain: ${now.toLocaleString("en-US",{timeZone:"America/Denver"})}</p>
-  `;
+  document.getElementById("currentTimes").innerText =
+    now.toLocaleString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
 }
-updateCurrentTimes();
-setInterval(updateCurrentTimes,1000);
+setInterval(updateTime, 1000);
+updateTime();
 
-/* ================= LOAD TEMPLATE ================= */
+/* ============================
+   UI RENDER
+============================ */
+function renderTasks() {
+  const output = document.getElementById("output");
+  output.innerHTML = "";
 
-window.addEventListener("load", async () => {
-  try {
-    const res = await fetch("./data/Weekday_Monitoring Template.xlsx");
-    if (!res.ok) return;
-    loadWorkbook(await res.arrayBuffer());
-  } catch {}
-});
+  tasks.forEach((task, index) => {
+    const div = document.createElement("div");
+    div.className = `task ${task.status === "escalate" ? "escalated" : ""}`;
 
-excelFile.addEventListener("change", e => {
-  const r = new FileReader();
-  r.onload = ev => loadWorkbook(ev.target.result);
-  r.readAsArrayBuffer(e.target.files[0]);
-});
+    div.innerHTML = `
+      <strong>${task.name}</strong>
 
-function loadWorkbook(buffer) {
-  const wb = XLSX.read(buffer,{type:"array"});
-  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1});
+      <div class="task-buttons">
+        <button class="${task.status === "good" ? "active-good" : ""}"
+                onclick="setStatus(${index}, 'good')">
+          <i class="fa-solid fa-check"></i> Good
+        </button>
 
-  headers = rows[0];
-  allDataRows = rows.slice(1).map((r,i)=>({__rowId:i,data:r}));
-  filteredRows = allDataRows;
-  currentIndex = 0;
+        <button class="${task.status === "monitor" ? "active-monitor" : ""}"
+                onclick="setStatus(${index}, 'monitor')">
+          <i class="fa-solid fa-eye"></i> Monitor
+        </button>
 
-  render();
-  buildNav();
-  buildFilters();
-  buildExportButtons();
-}
-
-/* ================= UI ================= */
-
-function buildNav() {
-  navigation.innerHTML = `
-    <button onclick="prev()">Prev</button>
-    <span>${currentIndex+1}/${filteredRows.length}</span>
-    <button onclick="next()">Next</button>
-  `;
-}
-
-function buildFilters() {
-  const shifts = [...new Set(allDataRows.map(r=>r.data[0]))];
-  shiftFilter.innerHTML = `
-    <button onclick="filterShift('All')" class="active-filter">All</button>
-    ${shifts.map(s=>`<button onclick="filterShift('${s}')">${s}</button>`).join("")}
-  `;
-}
-
-function buildExportButtons() {
-  exportButtons.innerHTML = `
-    <button onclick="exportShift()">Export Shift</button>
-    <button onclick="exportEscalated()">Export Escalated</button>
-    <button onclick="resetShift()">Reset Shift</button>
-  `;
-}
-
-function render() {
-  const r = filteredRows[currentIndex];
-  if (!r) return;
-
-  let html = `<div class="shift-card"><div class="shift-header">${r.data[0]}</div>`;
-  for (let i=3;i<headers.length;i++) {
-    const key = `${r.data[0]}-${headers[i]}-${r.__rowId}`;
-    const status = taskStatuses[key]||"";
-    html += `
-      <div class="task ${status==="escalate"?"escalated":""}">
-        <strong>${headers[i]}</strong> ${r.data[i]}
-        <div class="task-buttons">
-          <button class="${status==="good"?"active-good":""}" onclick="setStatus('${key}','good')">Good</button>
-          <button class="${status==="monitor"?"active-monitor":""}" onclick="setStatus('${key}','monitor')">Monitor</button>
-          <button class="${status==="escalate"?"active-escalate":""}" onclick="setStatus('${key}','escalate',true)">Escalate</button>
-        </div>
-      </div>`;
-  }
-  output.innerHTML = html+"</div>";
-}
-
-/* ================= STATUS ================= */
-
-function setStatus(key,status,modal=false){
-  taskStatuses[key]=status;
-  if (modal) { currentEscalationKey=key; escalationModal.style.display="block"; }
-  render();
-}
-
-/* ================= RESET ================= */
-
-function resetShift(){
-  if(!confirm("Reset all statuses for this shift?"))return;
-  const shift=filteredRows[currentIndex].data[0];
-  Object.keys(taskStatuses).forEach(k=>k.startsWith(shift)&&delete taskStatuses[k]);
-  Object.keys(escalationNotes).forEach(k=>k.startsWith(shift)&&delete escalationNotes[k]);
-  render();
-}
-
-/* ================= EXPORT ================= */
-
-function getDate(){
-  return new Date().toLocaleDateString("en-US",{timeZone:"America/Denver",month:"long",day:"numeric",year:"numeric"});
-}
-
-async function exportShift(){
-  const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet("Shift");
-  ws.addRow(headers);
-
-  filteredRows.forEach((r,i)=>{
-    ws.addRow(r.data);
-    for(let c=3;c<headers.length;c++){
-      const key=`${r.data[0]}-${headers[c]}-${r.__rowId}`;
-      const cell=ws.getRow(i+2).getCell(c+1);
-      if(taskStatuses[key]==="good") cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF00FF00"}};
-      if(taskStatuses[key]==="monitor") cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFFFF00"}};
-      if(taskStatuses[key]==="escalate"){cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFF0000"}};cell.font={bold:true};}
-    }
+        <button class="${task.status === "escalate" ? "active-escalate" : ""}"
+                onclick="openEscalation(${index})">
+          <i class="fa-solid fa-triangle-exclamation"></i> Escalate
+        </button>
+      </div>
+    `;
+    output.appendChild(div);
   });
-
-  download(await wb.xlsx.writeBuffer(),`${getDate()}_${filteredRows[currentIndex].data[0]}.xlsx`);
 }
 
-async function exportEscalated(){
-  const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet("Escalated");
-  ws.addRow(["Shift","App","Issue","Root Cause","Remarks"]);
+renderTasks();
 
-  Object.entries(taskStatuses).forEach(([k,v])=>{
-    if(v!=="escalate")return;
-    const n=escalationNotes[k]||{};
-    const [s,a]=k.split("-");
-    ws.addRow([s,a,n.issue||"",n.rootCause||"",n.remarks||""]);
-  });
-
-  download(await wb.xlsx.writeBuffer(),`${getDate()}_Escalated_${filteredRows[currentIndex].data[0]}.xlsx`);
+/* ============================
+   STATUS HANDLING
+============================ */
+function setStatus(index, status) {
+  tasks[index].status = status;
+  renderTasks();
 }
 
-/* ================= HELPERS ================= */
-
-function download(buf,name){
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(new Blob([buf]));
-  a.download=name;
-  a.click();
+function openEscalation(index) {
+  selectedTaskIndex = index;
+  document.getElementById("escalationModal").style.display = "block";
 }
 
-function closeModal(){ escalationModal.style.display="none"; }
-function saveEscalationNotes(){
-  escalationNotes[currentEscalationKey]={
-    issue:noteIssue.value,
-    rootCause:noteRootCause.value,
-    remarks:noteRemarks.value
-  };
+function closeModal() {
+  document.getElementById("escalationModal").style.display = "none";
+}
+
+function saveEscalationNotes() {
+  tasks[selectedTaskIndex].status = "escalate";
   closeModal();
+  renderTasks();
+}
+
+/* ============================
+   RESET WITH CONFIRMATION
+============================ */
+function resetAllStatuses() {
+  if (!confirm("Are you sure you want to reset all statuses?")) return;
+
+  tasks.forEach(t => t.status = null);
+  renderTasks();
+}
+
+/* ============================
+   FETCH EXCEL TEMPLATE (GITHUB)
+============================ */
+async function fetchTemplate() {
+  const url =
+    "https://raw.githubusercontent.com/YOUR_USERNAME/shift-tracker/main/data/Weekday_Monitoring%20Template.xlsx";
+
+  const response = await fetch(url);
+  const arrayBuffer = await response.arrayBuffer();
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(arrayBuffer);
+  return workbook;
+}
+
+/* ============================
+   EXPORT TO EXCEL
+============================ */
+async function exportExcel(isEscalated) {
+  const workbook = await fetchTemplate();
+  const sheet = workbook.worksheets[0];
+
+  let row = 2;
+
+  tasks.forEach(task => {
+    const excelRow = sheet.getRow(row);
+    excelRow.getCell(1).value = task.name;
+    excelRow.getCell(2).value = task.status || "N/A";
+
+    if (task.status === "good") {
+      excelRow.getCell(2).fill = fillColor("00C853");
+    }
+    if (task.status === "monitor") {
+      excelRow.getCell(2).fill = fillColor("FFD600");
+    }
+    if (task.status === "escalate") {
+      excelRow.getCell(2).fill = fillColor("D50000");
+    }
+
+    excelRow.commit();
+    row++;
+  });
+
+  const date = new Date().toLocaleDateString("en-US", {
+    month: "long",
+    day: "2-digit",
+    year: "numeric"
+  });
+
+  const shift = "1st Shift";
+  const fileName = isEscalated
+    ? `${date}_Escalated_${shift}.xlsx`
+    : `${date}_${shift}.xlsx`;
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  saveAsExcel(buffer, fileName);
+}
+
+/* ============================
+   HELPERS
+============================ */
+function fillColor(hex) {
+  return {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: hex }
+  };
+}
+
+function saveAsExcel(buffer, fileName) {
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  });
+
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = fileName;
+  link.click();
 }
