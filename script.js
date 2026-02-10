@@ -47,44 +47,67 @@ updateCurrentTimes();
 setInterval(updateCurrentTimes, 1000);
 
 /* =====================================================
-   ============ LOAD EXCEL FROM GITHUB =================
+   ================= FILE LOAD (GITHUB) =================
    ===================================================== */
 
-window.addEventListener("DOMContentLoaded", loadExcelFromGitHub);
-
-async function loadExcelFromGitHub() {
+async function loadExcelTemplateFromGitHub() {
   try {
     const response = await fetch("data/Weekday_Monitoring_Template.xlsx");
-    if (!response.ok) throw new Error("Failed to fetch Excel file");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-    const arrayBuffer = await response.arrayBuffer();
-    const data = new Uint8Array(arrayBuffer);
-    const workbook = XLSX.read(data, { type: "array" });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    const buffer = await response.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
 
-    headers = rows[0];
-    allDataRows = rows.slice(1).map((row, i) => ({
-      __rowId: i,
-      data: row
-    }));
-
-    filteredRows = allDataRows;
-    currentIndex = 0;
-    selectedShift = "All";
-
-    renderSingleCard(filteredRows, currentIndex);
-    buildNavigation();
-    buildShiftFilter();
-    buildExportButtons();
+    parseWorkbook(workbook);
   } catch (err) {
-    console.error(err);
+    console.error("Failed to load excel template:", err);
     alert("Failed to load excel template from GitHub.");
   }
 }
 
+function parseWorkbook(workbook) {
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+  headers = rows[0];
+  allDataRows = rows.slice(1).map((row, i) => ({
+    __rowId: i,
+    data: row
+  }));
+
+  filteredRows = allDataRows;
+  currentIndex = 0;
+  selectedShift = "All";
+
+  renderSingleCard(filteredRows, currentIndex);
+  buildNavigation();
+  buildShiftFilter();
+  buildExportButtons();
+}
+
 /* =====================================================
-   ================= FILE TIME FIX =====================
+   =============== OPTIONAL FILE UPLOAD =================
+   ===================================================== */
+
+document.getElementById("excelFile")?.addEventListener("change", handleFile);
+
+function handleFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const data = new Uint8Array(e.target.result);
+    const workbook = XLSX.read(data, { type: "array" });
+    parseWorkbook(workbook);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+window.addEventListener("DOMContentLoaded", loadExcelTemplateFromGitHub);
+
+/* =====================================================
+   ================= TIME FORMAT =======================
    ===================================================== */
 
 function excelTimeToString(value) {
@@ -232,7 +255,6 @@ function openModalWindow(key) {
   document.getElementById("noteRemarks").value = notes.remarks || "";
 
   document.getElementById("escalationModal").style.display = "block";
-  setTimeout(() => document.getElementById("noteIssue").focus(), 100);
 }
 
 function closeModal() {
@@ -305,7 +327,7 @@ function buildExportButtons() {
 }
 
 /* =====================================================
-   ============ MOUNTAIN TIME DATE (SAFE) ===============
+   ============ MOUNTAIN TIME DATE =====================
    ===================================================== */
 
 function getMountainTimeDateString() {
@@ -342,4 +364,138 @@ function getMountainTimeDateString() {
    ================= EXPORT SHIFT ======================
    ===================================================== */
 
-/* (UNCHANGED – EXACT SAME EXPORT LOGIC YOU ALREADY HAVE) */
+async function exportShiftData(shiftName) {
+  const rows =
+    shiftName === "All"
+      ? allDataRows
+      : allDataRows.filter(r => r.data[0] === shiftName);
+
+  if (!rows.length) {
+    alert("No data to export!");
+    return;
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Shifts");
+
+  worksheet.addRow(headers);
+
+  rows.forEach(rowObj => {
+    const row = [...rowObj.data];
+    row[1] = excelTimeToString(row[1]);
+    row[2] = excelTimeToString(row[2]);
+    worksheet.addRow(row);
+  });
+
+  rows.forEach((rowObj, rIndex) => {
+    const shift = rowObj.data[0];
+    for (let c = 3; c < headers.length; c++) {
+      const app = headers[c];
+      const key = `${shift}-${app}-${rowObj.__rowId}`;
+      const status = taskStatuses[key];
+
+      if (!status) continue;
+
+      const cell = worksheet.getRow(rIndex + 2).getCell(c + 1);
+      if (status === "good")
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF00FF00" } };
+      if (status === "monitor")
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
+      if (status === "escalate") {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF0000" } };
+        cell.font = { bold: true };
+      }
+    }
+  });
+
+  const fileName =
+    shiftName === "All"
+      ? `All_Shifts_${getMountainTimeDateString()}.xlsx`
+      : `${getMountainTimeDateString()}_${shiftName}.xlsx`;
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  });
+
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = fileName;
+  link.click();
+}
+
+/* =====================================================
+   ============== EXPORT ESCALATED TASKS ================
+   ===================================================== */
+
+async function exportEscalatedTasks(shiftName) {
+  const escalated = [];
+
+  allDataRows.forEach(rowObj => {
+    const row = rowObj.data;
+    const shift = row[0];
+    if (shiftName !== "All" && shift !== shiftName) return;
+
+    for (let c = 3; c < headers.length; c++) {
+      const app = headers[c];
+      const key = `${shift}-${app}-${rowObj.__rowId}`;
+
+      if (taskStatuses[key] === "escalate") {
+        const notes = escalationNotes[key] || {};
+        escalated.push([
+          shift,
+          app,
+          row[c],
+          excelTimeToString(row[1]),
+          excelTimeToString(row[2]),
+          notes.issue || "",
+          notes.rootCause || "",
+          notes.remarks || ""
+        ]);
+      }
+    }
+  });
+
+  if (!escalated.length) {
+    alert("No escalated tasks to export!");
+    return;
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Escalated Tasks");
+
+  worksheet.addRow([
+    "Shift",
+    "App",
+    "Task",
+    "Manila Time",
+    "MT Time",
+    "Issue",
+    "Root Cause",
+    "Remarks"
+  ]);
+
+  escalated.forEach(row => worksheet.addRow(row));
+
+  escalated.forEach((_, i) => {
+    worksheet.getRow(i + 2).eachCell(cell => {
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF0000" } };
+      cell.font = { bold: true };
+    });
+  });
+
+  const fileName =
+    shiftName === "All"
+      ? `${getMountainTimeDateString()}_All_Escalated_Report.xlsx`
+      : `${getMountainTimeDateString()}_${shiftName}_Escalated_Report.xlsx`;
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  });
+
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = fileName;
+  link.click();
+}
