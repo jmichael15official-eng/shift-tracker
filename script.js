@@ -90,6 +90,11 @@ async function loadMonitoringTemplate() {
       data: row
     }));
 
+    // ✅ RESET STATUS STATE ON LOAD
+    taskStatuses = {};
+    escalationNotes = {};
+    currentEscalationKey = "";
+
     filteredRows = allDataRows;
     currentIndex = 0;
     selectedShift = "All";
@@ -300,11 +305,34 @@ function filterByShift(shift) {
 
 function buildExportButtons() {
   document.getElementById("exportButtons").innerHTML = `
-    <button onclick="exportShiftData(selectedShift)">Export Selected Shift</button>
+    <button onclick="exportShiftData(selectedShift)">
+      Export Selected Shift
+    </button>
     <button onclick="exportEscalatedTasks(selectedShift)">
       Export Escalation (Selected Shift)
     </button>
+    <button onclick="resetAllStatuses()" style="background:#e74c3c">
+      Reset All Status
+    </button>
   `;
+}
+
+/* =====================================================
+   ================= RESET STATUS ======================
+   ===================================================== */
+
+function resetAllStatuses() {
+  const confirmReset = confirm(
+    "This will clear ALL task statuses and escalation notes.\n\nContinue?"
+  );
+
+  if (!confirmReset) return;
+
+  taskStatuses = {};
+  escalationNotes = {};
+  currentEscalationKey = "";
+
+  renderSingleCard(filteredRows, currentIndex);
 }
 
 /* =====================================================
@@ -339,106 +367,4 @@ function getMountainTimeDateString() {
   }
 
   return `${month}_${day}_${year}`;
-}
-
-/* =====================================================
-   ================= EXPORT SHIFT ======================
-   ===================================================== */
-
-async function exportShiftData(shiftName) {
-  const rows =
-    shiftName === "All"
-      ? allDataRows
-      : allDataRows.filter(r => r.data[0] === shiftName);
-
-  if (!rows.length) {
-    alert("No data to export!");
-    return;
-  }
-
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("Shifts");
-
-  worksheet.addRow(headers);
-
-  rows.forEach(rowObj => {
-    const row = [...rowObj.data];
-    row[1] = excelTimeToString(row[1]);
-    row[2] = excelTimeToString(row[2]);
-    worksheet.addRow(row);
-  });
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  });
-
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `${getMountainTimeDateString()}_${shiftName}.xlsx`;
-  link.click();
-}
-
-/* =====================================================
-   ============== EXPORT ESCALATED TASKS ================
-   ===================================================== */
-
-async function exportEscalatedTasks(shiftName) {
-  const escalated = [];
-
-  allDataRows.forEach(rowObj => {
-    const row = rowObj.data;
-    const shift = row[0];
-    if (shiftName !== "All" && shift !== shiftName) return;
-
-    for (let c = 3; c < headers.length; c++) {
-      const app = headers[c];
-      const key = `${shift}-${app}-${rowObj.__rowId}`;
-
-      if (taskStatuses[key] === "escalate") {
-        const notes = escalationNotes[key] || {};
-        escalated.push([
-          shift,
-          app,
-          row[c],
-          excelTimeToString(row[1]),
-          excelTimeToString(row[2]),
-          notes.issue || "",
-          notes.rootCause || "",
-          notes.remarks || ""
-        ]);
-      }
-    }
-  });
-
-  if (!escalated.length) {
-    alert("No escalated tasks to export!");
-    return;
-  }
-
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("Escalated Tasks");
-
-  worksheet.addRow([
-    "Shift",
-    "App",
-    "Task",
-    "Manila Time",
-    "MT Time",
-    "Issue",
-    "Root Cause",
-    "Remarks"
-  ]);
-
-  escalated.forEach(row => worksheet.addRow(row));
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  });
-
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `${getMountainTimeDateString()}_Escalated_Report.xlsx`;
-  link.click();
 }
