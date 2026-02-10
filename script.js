@@ -1,317 +1,242 @@
-/*********************************************************
- * GLOBAL STATE
- *********************************************************/
-let allDataRows = [];
+/* =========================
+   GLOBAL STATE
+========================= */
+
+let workbook = null;
+let worksheet = null;
+let allRows = [];
 let headers = [];
-let filteredRows = [];
-let currentIndex = 0;
-let selectedShift = "All";
 
-let taskStatuses = {};
-let escalationNotes = {};
-let currentEscalationKey = "";
+let selectedShift = null;
+let selectedDateLabel = "";
 
-/*********************************************************
- * CURRENT TIMES
- *********************************************************/
-function updateCurrentTimes() {
-  const now = new Date();
-  document.getElementById("currentTimes").innerHTML = `
-    <b>Manila:</b> ${now.toLocaleTimeString("en-US", { timeZone: "Asia/Manila" })} |
-    <b>MT:</b> ${now.toLocaleTimeString("en-US", { timeZone: "America/Denver" })}
-  `;
-}
-setInterval(updateCurrentTimes, 1000);
-updateCurrentTimes();
+let taskStatuses = {};        // key: taskId -> good|monitor|escalate
+let escalationNotes = {};     // key: taskId -> { issue, rootCause, remarks }
+let currentEscalationTask = null;
 
-/*********************************************************
- * MT DATE STRING
- *********************************************************/
-function getMTDateString() {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Denver",
-    year: "numeric",
-    month: "long",
-    day: "numeric"
-  }).formatToParts(new Date());
+/* =========================
+   LOAD EXCEL FROM GITHUB
+========================= */
 
-  const g = t => parts.find(p => p.type === t)?.value;
-  return `${g("month")}_${g("day")}_${g("year")}`;
-}
+document.addEventListener("DOMContentLoaded", loadExcelTemplate);
 
-/*********************************************************
- * EXCEL TIME
- *********************************************************/
-function excelTimeToString(value) {
-  if (typeof value === "number") {
-    const sec = Math.round(value * 86400);
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    return new Date(0, 0, 0, h, m).toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true
-    });
-  }
-  return value || "";
-}
-
-/*********************************************************
- * LOAD TEMPLATE (FIXED PATH)
- *********************************************************/
-async function loadMonitoringTemplate() {
+async function loadExcelTemplate() {
   try {
-    const res = await fetch("./data/Weekday_Monitoring%20Template.xlsx");
-    if (!res.ok) throw new Error();
+    const response = await fetch("./data/Weekday_Monitoring Template.xlsx");
+    if (!response.ok) throw new Error("Fetch failed");
 
-    const buffer = await res.arrayBuffer();
-    const wb = XLSX.read(buffer, { type: "array" });
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    const arrayBuffer = await response.arrayBuffer();
+    const wb = XLSX.read(arrayBuffer, { type: "array" });
 
-    headers = rows[0];
-    allDataRows = rows.slice(1).map((row, i) => ({
-      __rowId: i,
-      data: row
-    }));
-    filteredRows = allDataRows;
+    workbook = wb;
+    worksheet = wb.Sheets[wb.SheetNames[0]];
 
-    buildNavigation();
-    buildShiftFilter();
+    const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    headers = json[0];
+    allRows = json.slice(1);
+
+    buildShiftFilters();
     buildExportButtons();
-    renderCurrentCard();
-  } catch {
+  } catch (err) {
+    console.error(err);
     document.getElementById("output").innerHTML =
-      "<b style='color:red'>Failed to load monitoring template</b>";
+      "<p style='color:red;text-align:center;'>Failed to load monitoring template</p>";
   }
 }
-loadMonitoringTemplate();
 
-/*********************************************************
- * NAVIGATION
- *********************************************************/
-function buildNavigation() {
-  navigation.innerHTML = `
-    <button onclick="prevCard()">Previous</button>
-    <span id="cardCounter"></span>
-    <button onclick="nextCard()">Next</button>
-  `;
+/* =========================
+   SHIFT FILTER
+========================= */
+
+function buildShiftFilters() {
+  const shiftCol = headers.indexOf("Shift");
+  const shifts = [...new Set(allRows.map(r => r[shiftCol]).filter(Boolean))];
+
+  const container = document.getElementById("shiftFilter");
+  container.innerHTML = "";
+
+  shifts.forEach(shift => {
+    const btn = document.createElement("button");
+    btn.textContent = shift;
+    btn.onclick = () => selectShift(shift, btn);
+    container.appendChild(btn);
+  });
 }
-function prevCard() {
-  if (currentIndex > 0) currentIndex--, renderCurrentCard();
+
+function selectShift(shift, btn) {
+  selectedShift = shift;
+
+  document.querySelectorAll("#shiftFilter button").forEach(b =>
+    b.classList.remove("active")
+  );
+  btn.classList.add("active");
+
+  renderTasks();
 }
-function nextCard() {
-  if (currentIndex < filteredRows.length - 1) currentIndex++, renderCurrentCard();
-}
 
-/*********************************************************
- * RENDER CARD
- *********************************************************/
-function renderCurrentCard() {
-  const obj = filteredRows[currentIndex];
-  if (!obj) return;
+/* =========================
+   TASK RENDER
+========================= */
 
-  const row = obj.data;
-  const id = obj.__rowId;
+function renderTasks() {
+  const shiftCol = headers.indexOf("Shift");
+  const taskCol = headers.indexOf("Task");
 
-  let html = `
-    <div class="shift-card">
-      <div class="shift-header">
-        ${row[0]} — ${excelTimeToString(row[1])} Manila |
-        ${excelTimeToString(row[2])} MT
-      </div>
-  `;
+  const container = document.getElementById("output");
+  container.innerHTML = "";
 
-  for (let i = 3; i < headers.length; i++) {
-    if (!row[i]) continue;
+  allRows.forEach((row, idx) => {
+    if (row[shiftCol] !== selectedShift) return;
 
-    const app = headers[i];
-    const key = `${row[0]}-${app}-${id}`;
-    const status = taskStatuses[key] || "";
+    const taskId = `${selectedShift}_${idx}`;
+    const status = taskStatuses[taskId] || "";
 
-    html += `
-      <div class="task ${status === "escalate" ? "escalated" : ""}">
-        <strong>${app}</strong>
-        <span>${row[i]}</span>
-        <div class="task-buttons">
-          <button class="${status === "good" ? "active-good" : ""}"
-            onclick="setStatus('${key}','good')">Good</button>
-          <button class="${status === "monitor" ? "active-monitor" : ""}"
-            onclick="setStatus('${key}','monitor')">Monitor</button>
-          <button class="${status === "escalate" ? "active-escalate" : ""}"
-            onclick="setStatus('${key}','escalate',true)">Escalate</button>
-        </div>
-      </div>
+    const div = document.createElement("div");
+    div.className = "task-row";
+
+    div.innerHTML = `
+      <span class="task-name">${row[taskCol]}</span>
+      <button class="good ${status === "good" ? "active" : ""}" onclick="setStatus('${taskId}','good')">Good</button>
+      <button class="monitor ${status === "monitor" ? "active" : ""}" onclick="setStatus('${taskId}','monitor')">Monitor</button>
+      <button class="escalate ${status === "escalate" ? "active" : ""}" onclick="openEscalation('${taskId}')">Escalate</button>
     `;
-  }
 
-  output.innerHTML = html + "</div>";
-  cardCounter.innerText = `Shift ${currentIndex + 1} of ${filteredRows.length}`;
+    container.appendChild(div);
+  });
 }
 
-/*********************************************************
- * STATUS + MODAL
- *********************************************************/
-function setStatus(key, status, openModal = false) {
-  taskStatuses[key] = status;
+function setStatus(taskId, status) {
+  taskStatuses[taskId] = status;
+  renderTasks();
+}
 
-  if (status === "escalate" && openModal) {
-    currentEscalationKey = key;
-    const n = escalationNotes[key] || {};
-    noteIssue.value = n.issue || "";
-    noteRootCause.value = n.rootCause || "";
-    noteRemarks.value = n.remarks || "";
-    escalationModal.style.display = "block";
-  }
-  renderCurrentCard();
+/* =========================
+   ESCALATION MODAL
+========================= */
+
+function openEscalation(taskId) {
+  currentEscalationTask = taskId;
+  taskStatuses[taskId] = "escalate";
+
+  const notes = escalationNotes[taskId] || {};
+  document.getElementById("noteIssue").value = notes.issue || "";
+  document.getElementById("noteRootCause").value = notes.rootCause || "";
+  document.getElementById("noteRemarks").value = notes.remarks || "";
+
+  document.getElementById("escalationModal").style.display = "block";
+  renderTasks();
 }
 
 function closeModal() {
-  escalationModal.style.display = "none";
+  document.getElementById("escalationModal").style.display = "none";
 }
+
 function saveEscalationNotes() {
-  escalationNotes[currentEscalationKey] = {
-    issue: noteIssue.value,
-    rootCause: noteRootCause.value,
-    remarks: noteRemarks.value
+  escalationNotes[currentEscalationTask] = {
+    issue: document.getElementById("noteIssue").value,
+    rootCause: document.getElementById("noteRootCause").value,
+    remarks: document.getElementById("noteRemarks").value
   };
   closeModal();
 }
 
-/*********************************************************
- * SHIFT FILTER
- *********************************************************/
-function buildShiftFilter() {
-  const shifts = [...new Set(allDataRows.map(r => r.data[0]))];
-  shiftFilter.innerHTML =
-    `<button class="${selectedShift === "All" ? "active-filter" : ""}"
-      onclick="filterByShift('All')">All Shift</button>` +
-    shifts.map(s =>
-      `<button class="${selectedShift === s ? "active-filter" : ""}"
-        onclick="filterByShift('${s}')">${s}</button>`
-    ).join("");
-}
-function filterByShift(shift) {
-  selectedShift = shift;
-  filteredRows = shift === "All"
-    ? allDataRows
-    : allDataRows.filter(r => r.data[0] === shift);
-  currentIndex = 0;
-  buildShiftFilter();
-  renderCurrentCard();
-}
+/* =========================
+   EXPORT BUTTONS
+========================= */
 
-/*********************************************************
- * EXPORT BUTTONS
- *********************************************************/
 function buildExportButtons() {
-  exportButtons.innerHTML = `
-    <button onclick="exportShiftData()">Export Shift</button>
-    <button onclick="exportEscalatedTasks()">Export Escalation</button>
-    <button onclick="resetAllStatuses()">Reset Status</button>
+  document.getElementById("exportButtons").innerHTML = `
+    <button onclick="exportShift()">Export Shift</button>
+    <button onclick="exportEscalations()">Export Escalations</button>
+    <button onclick="resetAll()">Reset Status</button>
   `;
 }
 
-/*********************************************************
- * EXPORT SHIFT (FIXED COLORS)
- *********************************************************/
-async function exportShiftData() {
+/* =========================
+   EXPORT SHIFT
+========================= */
+
+function exportShift() {
+  if (!selectedShift) return alert("Select a shift first");
+
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("Shift");
+  const ws = wb.addWorksheet("Monitoring");
 
   ws.addRow(headers);
 
-  filteredRows.forEach((obj, rIdx) => {
-    const row = [...obj.data];
-    row[1] = excelTimeToString(row[1]);
-    row[2] = excelTimeToString(row[2]);
-    ws.addRow(row);
+  allRows.forEach((row, idx) => {
+    if (row[headers.indexOf("Shift")] !== selectedShift) return;
 
-    for (let c = 3; c < headers.length; c++) {
-      const key = `${row[0]}-${headers[c]}-${obj.__rowId}`;
-      const status = taskStatuses[key];
-      if (!status) continue;
+    const taskId = `${selectedShift}_${idx}`;
+    const status = taskStatuses[taskId] || "";
 
-      const cell = ws.getRow(rIdx + 2).getCell(c + 1);
-      const colors = {
-        good: "FF00FF00",
-        monitor: "FFFFFF00",
-        escalate: "FFFF0000"
-      };
+    const r = ws.addRow(row);
+    const cell = r.getCell(headers.length);
 
-      cell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: colors[status] }
-      };
-    }
+    if (status === "good") cell.fill = fill("00FF00");
+    if (status === "monitor") cell.fill = fill("FFFF00");
+    if (status === "escalate") cell.fill = fill("FF0000");
   });
 
-  const fileName = `${getMTDateString()}_${selectedShift}.xlsx`;
-  download(await wb.xlsx.writeBuffer(), fileName);
+  downloadExcel(wb, buildFileName());
 }
 
-/*********************************************************
- * EXPORT ESCALATED TASKS (FIXED)
- *********************************************************/
-async function exportEscalatedTasks() {
+/* =========================
+   EXPORT ESCALATIONS
+========================= */
+
+function exportEscalations() {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Escalations");
 
-  ws.addRow([
-    "Shift",
-    "App",
-    "Task",
-    "Manila Time",
-    "MT Time",
-    "Issue",
-    "Root Cause",
-    "Remarks"
-  ]);
+  ws.addRow(["Shift", "Task", "Issue", "Root Cause", "Remarks"]);
 
-  allDataRows.forEach(obj => {
-    const row = obj.data;
-    for (let c = 3; c < headers.length; c++) {
-      const key = `${row[0]}-${headers[c]}-${obj.__rowId}`;
-      if (taskStatuses[key] !== "escalate") continue;
+  allRows.forEach((row, idx) => {
+    const taskId = `${row[headers.indexOf("Shift")]}_${idx}`;
+    if (taskStatuses[taskId] !== "escalate") return;
 
-      const notes = escalationNotes[key] || {};
-      ws.addRow([
-        row[0],
-        headers[c],
-        row[c],
-        excelTimeToString(row[1]),
-        excelTimeToString(row[2]),
-        notes.issue || "",
-        notes.rootCause || "",
-        notes.remarks || ""
-      ]);
-    }
+    const notes = escalationNotes[taskId] || {};
+    ws.addRow([
+      row[headers.indexOf("Shift")],
+      row[headers.indexOf("Task")],
+      notes.issue || "",
+      notes.rootCause || "",
+      notes.remarks || ""
+    ]);
   });
 
-  const fileName = `${getMTDateString()}_${selectedShift}_Escalated_Report.xlsx`;
-  download(await wb.xlsx.writeBuffer(), fileName);
+  downloadExcel(wb, `Escalations_${buildFileName()}`);
 }
 
-/*********************************************************
- * DOWNLOAD
- *********************************************************/
-function download(buffer, name) {
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+/* =========================
+   HELPERS
+========================= */
+
+function fill(color) {
+  return {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: color }
+  };
+}
+
+function buildFileName() {
+  return `MTDay_Shift_${selectedShift.replace(/\s+/g, "_")}.xlsx`;
+}
+
+function downloadExcel(wb, filename) {
+  wb.xlsx.writeBuffer().then(buf => {
+    const blob = new Blob([buf]);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
   });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
 }
 
-/*********************************************************
- * RESET
- *********************************************************/
-function resetAllStatuses() {
-  if (!confirm("Reset all statuses and notes?")) return;
+function resetAll() {
+  if (!confirm("Reset all statuses?")) return;
   taskStatuses = {};
   escalationNotes = {};
-  renderCurrentCard();
+  renderTasks();
 }
