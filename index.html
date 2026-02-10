@@ -4,57 +4,40 @@
   <meta charset="UTF-8">
   <title>Shift Tracker</title>
   <link rel="stylesheet" href="style.css">
-
-  <link rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <!-- Font Awesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
 </head>
 <body>
-
   <div id="currentTimes"></div>
 
-  <!-- Shift Filters -->
-  <div id="shiftFilter">
-    <button onclick="setShift('all')" class="active-filter">All Shifts</button>
-    <button onclick="setShift('1st')">1st Shift</button>
-    <button onclick="setShift('2nd')">2nd Shift</button>
-    <button onclick="setShift('3rd')">3rd Shift</button>
-  </div>
+  <input type="file" id="excelFile" accept=".xlsx" />
 
-  <!-- Export Buttons -->
-  <div id="exportButtons">
-    <button onclick="exportExcel(false)">
-      <i class="fa-solid fa-file-excel"></i> Export
-    </button>
-    <button onclick="exportExcel(true)">
-      <i class="fa-solid fa-triangle-exclamation"></i> Export Escalated
-    </button>
-    <button onclick="resetAllStatuses()">
-      <i class="fa-solid fa-rotate-left"></i> Reset Status
-    </button>
+  <div id="navigation"></div>
+  <div id="shiftFilter"></div>
+
+  <div id="exportButtons" style="text-align:center; margin-bottom:20px;">
+    <!-- Buttons generated dynamically -->
   </div>
 
   <div id="output"></div>
 
-  <!-- Escalation Modal -->
+  <!-- Escalation Notes Modal -->
   <div id="escalationModal" class="modal">
     <div class="modal-content">
       <span class="close" onclick="closeModal()">&times;</span>
-
-      <h3>Escalation Details</h3>
-
-      <label>Issue</label>
-      <input id="noteIssue" placeholder="Describe the issue">
-
-      <label>Root Cause</label>
-      <input id="noteRootCause" placeholder="Root cause">
-
-      <label>Remarks</label>
-      <input id="noteRemarks" placeholder="Additional remarks">
-
-      <button onclick="saveEscalationNotes()">Save Escalation</button>
+      <h3>Escalation Notes</h3>
+      <label>Issue:</label>
+      <input type="text" id="noteIssue" placeholder="Describe the issue...">
+      <label>Root Cause:</label>
+      <input type="text" id="noteRootCause" placeholder="Root cause...">
+      <label>Remarks:</label>
+      <input type="text" id="noteRemarks" placeholder="Additional remarks...">
+      <button onclick="saveEscalationNotes()">Save</button>
     </div>
   </div>
 
+  <!-- Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
   <script src="script.js"></script>
 </body>
